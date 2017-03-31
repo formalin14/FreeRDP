@@ -2119,6 +2119,8 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings,
 			settings->SupportGraphicsPipeline = TRUE;
 			settings->GfxH264 = TRUE;
 
+            printf("&&&&&&&&&& %s\n", arg->Value);
+            
 			if (arg->Value)
 			{
 				if (_strnicmp("AVC444", arg->Value, 6) == 0)
@@ -2126,8 +2128,13 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings,
 					settings->GfxAVC444 = TRUE;
 				}
 				else if (_strnicmp("AVC420", arg->Value, 6) != 0)
+                {
+                    printf("&&&&&& command_line_error\n");
 					return COMMAND_LINE_ERROR;
+                }
+                printf("&&&&&&&& got here\n");
 			}
+            printf("&&&&&&&&& no value\n");
 		}
 		CommandLineSwitchCase(arg, "rfx")
 		{

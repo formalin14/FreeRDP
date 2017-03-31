@@ -108,6 +108,13 @@ static void freeArguments(int argc, char** argv)
 		goto out_free;
 
 	// Screen Size is set on connect (we need a valid delegate in case the user choose an automatic screen size)
+    
+    // add by xulun start
+    connected_via_3g = YES;
+    [_params setBool:YES forKey:@"perf_h264"];
+    
+    // add by xulun end
+    
 
 	// Other simple numeric settings
 	if ([_params hasValueForKey:@"colors"])
