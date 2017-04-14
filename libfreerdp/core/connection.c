@@ -573,17 +573,29 @@ BOOL rdp_server_establish_keys(rdpRdp* rdp, wStream* s)
 	if (rand_len != key_len + 8)
 	{
 		WLog_ERR(TAG, "invalid encrypted client random length");
+		free(client_random);
 		goto end;
 	}
 
 	crypt_client_random = calloc(1, rand_len);
 	if (!crypt_client_random)
+	{
+		free(client_random);
 		goto end;
+	}
+
 	Stream_Read(s, crypt_client_random, rand_len);
 
 	mod = rdp->settings->RdpServerRsaKey->Modulus;
 	priv_exp = rdp->settings->RdpServerRsaKey->PrivateExponent;
-	crypto_rsa_private_decrypt(crypt_client_random, rand_len - 8, key_len, mod, priv_exp, client_random);
+	if (crypto_rsa_private_decrypt(crypt_client_random, rand_len - 8, key_len, mod, priv_exp, client_random) <= 0)
+	{
+		free(client_random);
+		goto end;
+	}
+
+	rdp->settings->ClientRandom = client_random;
+	rdp->settings->ClientRandomLength = 32;
 
 	/* now calculate encrypt / decrypt and update keys */
 	if (!security_establish_keys(client_random, rdp))
@@ -625,7 +637,6 @@ BOOL rdp_server_establish_keys(rdpRdp* rdp, wStream* s)
 	ret = TRUE;
 end:
 	free(crypt_client_random);
-	free(client_random);
 
 	if (!ret)
 	{

@@ -100,7 +100,8 @@ static UINT gdi_OutputUpdate(rdpGdi* gdi, gdiGfxSurface* surface)
 	UINT16 width, height;
 	UINT32 surfaceX, surfaceY;
 	RECTANGLE_16 surfaceRect;
-	const RECTANGLE_16* extents;
+	const RECTANGLE_16* rects;
+	UINT32 i, nbRects;
 	rdpUpdate* update = gdi->context->update;
 	surfaceX = surface->outputOriginX;
 	surfaceY = surface->outputOriginY;
@@ -111,16 +112,19 @@ static UINT gdi_OutputUpdate(rdpGdi* gdi, gdiGfxSurface* surface)
 	region16_intersect_rect(&(surface->invalidRegion),
 	                        &(surface->invalidRegion), &surfaceRect);
 
-	if (!region16_is_empty(&(surface->invalidRegion)))
+	if (!(rects = region16_rects(&surface->invalidRegion, &nbRects)) || !nbRects)
+                return CHANNEL_RC_OK;
+
+	update->BeginPaint(gdi->context);
+
+	for (i = 0; i < nbRects; i++)
 	{
-		extents = region16_extents(&(surface->invalidRegion));
-		nXSrc = extents->left;
-		nYSrc = extents->top;
-		nXDst = surfaceX + extents->left;
-		nYDst = surfaceY + extents->top;
-		width = extents->right - extents->left;
-		height = extents->bottom - extents->top;
-		update->BeginPaint(gdi->context);
+		nXSrc = rects[i].left;
+		nYSrc = rects[i].top;
+		nXDst = surfaceX + nXSrc;
+		nYDst = surfaceY + nYSrc;
+		width = rects[i].right - rects[i].left;
+		height = rects[i].bottom - rects[i].top;
 
 		if (!freerdp_image_copy(gdi->primary_buffer, gdi->primary->hdc->format,
 		                        gdi->stride,
@@ -130,8 +134,9 @@ static UINT gdi_OutputUpdate(rdpGdi* gdi, gdiGfxSurface* surface)
 			return CHANNEL_RC_NULL_DATA;
 
 		gdi_InvalidateRegion(gdi->primary->hdc, nXDst, nYDst, width, height);
-		update->EndPaint(gdi->context);
 	}
+
+	update->EndPaint(gdi->context);
 
 	region16_clear(&(surface->invalidRegion));
 	return CHANNEL_RC_OK;
@@ -556,7 +561,12 @@ static UINT gdi_SurfaceCommand_Progressive(rdpGdi* gdi,
 	INT32 rc;
 	UINT status = CHANNEL_RC_OK;
 	gdiGfxSurface* surface;
-	RECTANGLE_16 invalidRect;
+
+	/**
+	 * Note: Since this comes via a Wire-To-Surface-2 PDU the
+	 * cmd's top/left/right/bottom/width/height members are always zero!
+	 * The update region is determined during decompression.
+	 */
 
 	surface = (gdiGfxSurface*) context->GetSurfaceData(context, cmd->surfaceId);
 	if (!surface)
@@ -578,20 +588,13 @@ static UINT gdi_SurfaceCommand_Progressive(rdpGdi* gdi,
 	rc = progressive_decompress(surface->codecs->progressive, cmd->data,
 	                            cmd->length, surface->data, surface->format,
 	                            surface->scanline, cmd->left, cmd->top,
-	                            cmd->width, cmd->height, cmd->surfaceId);
+	                            &surface->invalidRegion, cmd->surfaceId);
 
 	if (rc < 0)
 	{
 		WLog_ERR(TAG, "progressive_decompress failure: %"PRId32"", rc);
 		return ERROR_INTERNAL_ERROR;
 	}
-
-	invalidRect.left = cmd->left;
-	invalidRect.top = cmd->top;
-	invalidRect.right = cmd->right;
-	invalidRect.bottom = cmd->bottom;
-	region16_union_rect(&(surface->invalidRegion), &(surface->invalidRegion),
-	                    &invalidRect);
 
 	if (!gdi->inGfxFrame)
 	{
@@ -974,8 +977,8 @@ static UINT gdi_CacheToSurface(RdpgfxClientContext* context,
 
 		invalidRect.left = destPt->x;
 		invalidRect.top = destPt->y;
-		invalidRect.right = destPt->x + cacheEntry->width - 1;
-		invalidRect.bottom = destPt->y + cacheEntry->height - 1;
+		invalidRect.right = destPt->x + cacheEntry->width;
+		invalidRect.bottom = destPt->y + cacheEntry->height;
 		region16_union_rect(&surface->invalidRegion, &surface->invalidRegion,
 		                    &invalidRect);
 	}
